@@ -57,7 +57,8 @@ class QuickCaptureActivity : AppCompatActivity() {
             finish()
         }
 
-        findViewById<Button>(R.id.btn_save).setOnClickListener {
+        val saveButton = findViewById<Button>(R.id.btn_save)
+        saveButton.setOnClickListener {
             val text = captureInput.text.toString().trim()
             if (text.isBlank()) {
                 finish()
@@ -69,30 +70,40 @@ class QuickCaptureActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            val result = if (isQuickCaptureWidget) {
-                widgetVaultManager.captureToDailyNote(text)
-            } else {
-                widgetVaultManager.addToTop = addToTopToggle.isChecked
-                val appended = if (appendToWidget) {
-                    widgetVaultManager.appendToWidgetNote(text)
+            // The insert does SAF directory traversal plus a full note read/rewrite —
+            // run it off the main thread. Disable Save so a second tap can't
+            // double-insert while the write is in flight.
+            saveButton.isEnabled = false
+            val addToTop = addToTopToggle.isChecked
+            Thread {
+                val result = if (isQuickCaptureWidget) {
+                    widgetVaultManager.captureToDailyNote(text)
                 } else {
-                    widgetVaultManager.appendToDailyNote(text)
+                    widgetVaultManager.addToTop = addToTop
+                    val appended = if (appendToWidget) {
+                        widgetVaultManager.appendToWidgetNote(text)
+                    } else {
+                        widgetVaultManager.appendToDailyNote(text)
+                    }
+                    if (appended) VaultManager.CaptureResult.SUCCESS else VaultManager.CaptureResult.ERROR
                 }
-                if (appended) VaultManager.CaptureResult.SUCCESS else VaultManager.CaptureResult.ERROR
-            }
-            if (result == VaultManager.CaptureResult.SUCCESS) {
-                Toast.makeText(this, R.string.note_saved, Toast.LENGTH_SHORT).show()
-                ObsidianWidgetProvider.updateAllWidgets(this)
-                finish()
-            } else {
-                val errorRes = when (result) {
-                    VaultManager.CaptureResult.PLACEHOLDER_NOT_FOUND ->
-                        R.string.error_placeholder_not_found
-                    else -> R.string.error_saving
+                runOnUiThread {
+                    if (result == VaultManager.CaptureResult.SUCCESS) {
+                        Toast.makeText(applicationContext, R.string.note_saved, Toast.LENGTH_SHORT).show()
+                        ObsidianWidgetProvider.updateAllWidgets(applicationContext)
+                        finish()
+                    } else {
+                        val errorRes = when (result) {
+                            VaultManager.CaptureResult.PLACEHOLDER_NOT_FOUND ->
+                                R.string.error_placeholder_not_found
+                            else -> R.string.error_saving
+                        }
+                        // Keep the activity (and typed text) open so the note isn't lost
+                        Toast.makeText(applicationContext, errorRes, Toast.LENGTH_SHORT).show()
+                        saveButton.isEnabled = true
+                    }
                 }
-                // Keep the activity (and typed text) open so the note isn't lost
-                Toast.makeText(this, errorRes, Toast.LENGTH_SHORT).show()
-            }
+            }.start()
         }
 
         // Handle shared text from other apps
