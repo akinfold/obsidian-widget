@@ -6,8 +6,6 @@ on:
       - 'v*'
       - 'V*'
       - '[0-9]*'
-  release:
-    types: [created]
 
 jobs:
   build:
@@ -27,17 +25,51 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build debug APK
-        run: gradle assembleDebug
-
-      - name: Rename APK
+      - name: Resolve version metadata
+        id: version
+        shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          cp app/build/outputs/apk/debug/app-debug.apk "obsidian-widget-${VERSION}.apk"
+          VERSION="${VERSION#V}"
+          if [[ ! "$VERSION" =~ ^([0-9]+)\.([0-9]+)(\.([0-9]+))?$ ]]; then
+            echo "Release tag must use vMAJOR.MINOR or vMAJOR.MINOR.PATCH format" >&2
+            exit 1
+          fi
+
+          MAJOR="${BASH_REMATCH[1]}"
+          MINOR="${BASH_REMATCH[2]}"
+          PATCH="${BASH_REMATCH[4]:-0}"
+          VERSION_CODE=$((10#$MAJOR * 1000000 + 10#$MINOR * 1000 + 10#$PATCH))
+
+          echo "name=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Build debug APK
+        run: |
+          ./gradlew assembleDebug \
+            -PappVersionName="${{ steps.version.outputs.name }}" \
+            -PappVersionCode="${{ steps.version.outputs.code }}"
+
+      - name: Verify APK metadata
+        run: |
+          jq -e \
+            --arg versionName "${{ steps.version.outputs.name }}" \
+            --argjson versionCode "${{ steps.version.outputs.code }}" \
+            '.elements[0].versionName == $versionName and .elements[0].versionCode == $versionCode' \
+            app/build/outputs/apk/debug/output-metadata.json
+
+      - name: Prepare release files
+        run: |
+          APK="obsidian-widget-${{ steps.version.outputs.name }}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$APK"
+          shasum -a 256 "$APK" > "$APK.sha256"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: obsidian-widget-*.apk
+          name: Obsidian Widget v${{ steps.version.outputs.name }}
+          files: |
+            obsidian-widget-*.apk
+            obsidian-widget-*.apk.sha256
           generate_release_notes: true
           tag_name: ${{ github.ref_name }}

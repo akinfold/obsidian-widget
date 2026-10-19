@@ -36,6 +36,7 @@ class ChecklistRemoteViewsFactory(
         private val BOLD = Regex("""\*\*(.+?)\*\*""")
         private val ITALIC_STAR = Regex("""\*(.+?)\*""")
         private val ITALIC_UNDER = Regex("""_(.+?)_""")
+        private val WIKI_LINK = Regex("""!?\[\[([^\[\]|]+)(?:\|([^\[\]]+))?\]\]""")
         private val MD_LINK = Regex("""\[([^\]]+)\]\(([^)]+)\)""")
         private val BARE_URL = Regex("""(?<!["'=(])((?:https?://)?[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z]{2,})+(?:/[^\s<>"']*)?)""")
 
@@ -52,11 +53,18 @@ class ChecklistRemoteViewsFactory(
             }
             return null
         }
-        fun markdownToHtml(text: String): CharSequence {
+        fun markdownToHtml(text: String, accentColor: Int): CharSequence {
             var html = text
                 .replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
+            val accentHex = String.format("#%06X", accentColor and 0xFFFFFF)
+            html = WIKI_LINK.replace(html) {
+                val target = it.groupValues[1].trim()
+                val alias = it.groupValues[2].trim()
+                val label = alias.ifEmpty { target }
+                "<u><font color=\"$accentHex\">$label</font></u>"
+            }
             html = MD_LINK.replace(html) { "<a href=\"${it.groupValues[2]}\">${it.groupValues[1]}</a>" }
             html = BARE_URL.replace(html) {
                 val url = it.groupValues[1]
@@ -89,9 +97,22 @@ class ChecklistRemoteViewsFactory(
     override fun getViewAt(position: Int): RemoteViews {
         val item = items[position]
 
+        if (item.propertyName != null) {
+            val views = RemoteViews(context.packageName, R.layout.widget_property_item)
+            views.setTextViewText(R.id.property_item_name, item.propertyName)
+            views.setTextViewText(
+                R.id.property_item_value,
+                markdownToHtml(item.text, themeColors.accent)
+            )
+            views.setTextColor(R.id.property_item_name, themeColors.textSecondary)
+            views.setTextColor(R.id.property_item_value, themeColors.text)
+            views.setOnClickFillInIntent(R.id.property_item_root, Intent())
+            return views
+        }
+
         if (item.isHeading) {
             val views = RemoteViews(context.packageName, R.layout.widget_heading_item)
-            views.setTextViewText(R.id.heading_item_content, markdownToHtml(item.text))
+            views.setTextViewText(R.id.heading_item_content, markdownToHtml(item.text, themeColors.accent))
             views.setTextColor(R.id.heading_item_content, themeColors.text)
             val url = extractFirstUrl(item.text)
             if (url != null) {
@@ -104,10 +125,17 @@ class ChecklistRemoteViewsFactory(
             return views
         }
 
+        if (item.isHorizontalRule) {
+            val views = RemoteViews(context.packageName, R.layout.widget_horizontal_rule_item)
+            views.setInt(R.id.horizontal_rule_line, "setColorFilter", themeColors.textSecondary)
+            views.setOnClickFillInIntent(R.id.horizontal_rule_root, Intent())
+            return views
+        }
+
         if (item.isPlainText) {
             val views = RemoteViews(context.packageName, R.layout.widget_text_item)
             val displayText = if (item.isBullet) "•  ${item.text}" else item.text
-            views.setTextViewText(R.id.text_item_content, markdownToHtml(displayText))
+            views.setTextViewText(R.id.text_item_content, markdownToHtml(displayText, themeColors.accent))
             views.setTextColor(R.id.text_item_content, themeColors.text)
             val density = context.resources.displayMetrics.density
             val indentPx = (item.indentLevel * 16 * density).toInt()
@@ -142,7 +170,7 @@ class ChecklistRemoteViewsFactory(
         }
 
         // Set text with strikethrough if checked
-        views.setTextViewText(R.id.checklist_text, markdownToHtml(item.text))
+        views.setTextViewText(R.id.checklist_text, markdownToHtml(item.text, themeColors.accent))
         if (item.isChecked) {
             views.setInt(R.id.checklist_text, "setPaintFlags",
                 Paint.STRIKE_THRU_TEXT_FLAG or Paint.ANTI_ALIAS_FLAG)
@@ -175,7 +203,7 @@ class ChecklistRemoteViewsFactory(
     }
 
     override fun getLoadingView(): RemoteViews? = null
-    override fun getViewTypeCount(): Int = 3
+    override fun getViewTypeCount(): Int = 5
     override fun getItemId(position: Int): Long = items[position].lineIndex.toLong()
     override fun hasStableIds(): Boolean = true
 }

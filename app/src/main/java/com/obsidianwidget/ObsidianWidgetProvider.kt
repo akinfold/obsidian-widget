@@ -9,6 +9,9 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.DocumentsContract
 import android.view.View
 import android.widget.RemoteViews
@@ -63,6 +66,7 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
         when (intent.action) {
             ACTION_REFRESH -> updateAllWidgets(context)
             ACTION_CAPTURE -> {
+                performHaptic(context)
                 val widgetId = intent.getIntExtra(EXTRA_WIDGET_ID, -1)
                 val captureIntent = Intent(context, QuickCaptureActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -71,6 +75,7 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
                 context.startActivity(captureIntent)
             }
             ACTION_ADD -> {
+                performHaptic(context)
                 val widgetId = intent.getIntExtra(EXTRA_WIDGET_ID, -1)
                 val addIntent = Intent(context, QuickCaptureActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -80,10 +85,12 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
                 context.startActivity(addIntent)
             }
             ACTION_OPEN -> {
+                performHaptic(context)
                 val widgetId = intent.getIntExtra(EXTRA_WIDGET_ID, -1)
                 openObsidian(context, widgetId)
             }
             ACTION_TOGGLE -> {
+                performHaptic(context)
                 val url = intent.getStringExtra(EXTRA_URL)
                 if (!url.isNullOrEmpty()) {
                     try {
@@ -104,6 +111,7 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
                 }
             }
             ACTION_NAV_LEFT, ACTION_NAV_RIGHT -> {
+                performHaptic(context)
                 val widgetId = intent.getIntExtra(EXTRA_WIDGET_ID, -1)
                 if (widgetId >= 0) {
                     val vaultManager = VaultManager(context, widgetId)
@@ -112,6 +120,19 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
                     updateWidget(context, appWidgetManager, widgetId)
                 }
             }
+        }
+    }
+
+    private fun performHaptic(context: Context) {
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            context.getSystemService(VibratorManager::class.java)?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        } ?: return
+
+        if (vibrator.hasVibrator()) {
+            vibrator.vibrate(VibrationEffect.createOneShot(24, VibrationEffect.DEFAULT_AMPLITUDE))
         }
     }
 
@@ -130,6 +151,7 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
         // Check if note has checklist items
         val allItems = vaultManager.parseChecklist()
         val hasChecklist = allItems.any { !it.isPlainText }
+        val hasProperties = allItems.any { it.propertyName != null }
 
         // Show TODO count if enabled
         if (vaultManager.showTodoCount && hasChecklist) {
@@ -141,8 +163,8 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
             views.setViewVisibility(R.id.widget_todo_count, View.GONE)
         }
 
-        if (hasChecklist) {
-            // Show interactive checklist ListView
+        if (hasChecklist || hasProperties) {
+            // Show parsed checklist and property rows
             views.setViewVisibility(R.id.widget_checklist, View.VISIBLE)
             views.setViewVisibility(R.id.widget_note_preview, View.GONE)
 
@@ -173,9 +195,15 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
             views.setViewVisibility(R.id.widget_note_preview, View.VISIBLE)
 
             if (vaultManager.isVaultConfigured || vaultManager.noteMode == VaultManager.NoteMode.PINNED) {
-                val noteContent = vaultManager.readWidgetNote()
+                val noteContent = vaultManager.readWidgetNoteForDisplay()
                 val preview = noteContent?.take(500) ?: context.getString(R.string.no_daily_note)
-                views.setTextViewText(R.id.widget_note_preview, preview)
+                views.setTextViewText(
+                    R.id.widget_note_preview,
+                    ChecklistRemoteViewsFactory.markdownToHtml(
+                        preview,
+                        vaultManager.getThemeColors().accent
+                    )
+                )
             } else {
                 views.setTextViewText(
                     R.id.widget_note_preview,
@@ -232,10 +260,18 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
             createActionIntent(context, ACTION_CAPTURE, appWidgetId)
         )
 
-        // Show/hide button bar based on setting
+        // Show each action independently and hide the bar when neither is enabled
+        views.setViewVisibility(
+            R.id.widget_add,
+            if (vaultManager.showAddButton) View.VISIBLE else View.GONE
+        )
+        views.setViewVisibility(
+            R.id.widget_btn_capture,
+            if (vaultManager.showNoteButton) View.VISIBLE else View.GONE
+        )
         views.setViewVisibility(
             R.id.widget_button_bar,
-            if (vaultManager.showButtons) View.VISIBLE else View.GONE
+            if (vaultManager.showAddButton || vaultManager.showNoteButton) View.VISIBLE else View.GONE
         )
 
         // Absorb taps on empty space so they don't trigger launcher reconfigure
@@ -249,7 +285,7 @@ class ObsidianWidgetProvider : AppWidgetProvider() {
 
         // Apply theme colors
         val colors = vaultManager.getThemeColors()
-        val isDark = vaultManager.widgetTheme == "dark"
+        val isDark = vaultManager.isDarkTheme()
         views.setInt(R.id.widget_root, "setBackgroundResource",
             if (isDark) R.drawable.widget_background else R.drawable.widget_background_light)
         views.setTextColor(R.id.widget_date, colors.text)

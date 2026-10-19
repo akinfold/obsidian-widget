@@ -9,7 +9,7 @@
     <color name="obsidian_text_secondary">#8B8B8F</color>
     <color name="obsidian_card">#2A2A30</color>
     <color name="white">#FFFFFF</color>
-    <color name="widget_bg">#F21A1A1E</color>
+    <color name="widget_bg">#FF1A1A1E</color>
     <color name="divider">#3A3A40</color>
     <color name="text_checked">#5A5A5E</color>
 </resources>

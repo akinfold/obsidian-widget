@@ -190,7 +190,7 @@
                 android:orientation="vertical"
                 android:layout_marginBottom="16dp">
 
-                <!-- Show buttons -->
+                <!-- Show Add button -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -202,12 +202,74 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Show Add &amp; Note buttons"
+                        android:text="Show + Add button"
                         android:textColor="@color/obsidian_text"
                         android:textSize="13sp" />
 
                     <Switch
-                        android:id="@+id/config_show_buttons"
+                        android:id="@+id/config_show_add_button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:thumbTint="@color/obsidian_primary"
+                        android:trackTint="@color/obsidian_text_secondary" />
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/obsidian_bg"
+                    android:layout_marginStart="12dp"
+                    android:layout_marginEnd="12dp" />
+
+                <!-- Show Note button -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="12dp"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Show Note button"
+                        android:textColor="@color/obsidian_text"
+                        android:textSize="13sp" />
+
+                    <Switch
+                        android:id="@+id/config_show_note_button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:thumbTint="@color/obsidian_primary"
+                        android:trackTint="@color/obsidian_text_secondary" />
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/obsidian_bg"
+                    android:layout_marginStart="12dp"
+                    android:layout_marginEnd="12dp" />
+
+                <!-- Hide YAML frontmatter -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="12dp"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Hide properties (YAML frontmatter)"
+                        android:textColor="@color/obsidian_text"
+                        android:textSize="13sp" />
+
+                    <Switch
+                        android:id="@+id/config_hide_properties"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:thumbTint="@color/obsidian_primary"
@@ -359,6 +421,16 @@
                 android:orientation="horizontal"
                 android:padding="12dp"
                 android:layout_marginBottom="8dp">
+
+                <RadioButton
+                    android:id="@+id/config_theme_system"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="System"
+                    android:textColor="@color/obsidian_text"
+                    android:textSize="13sp"
+                    android:buttonTint="@color/obsidian_primary" />
 
                 <RadioButton
                     android:id="@+id/config_theme_dark"

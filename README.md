@@ -43,13 +43,16 @@ Or open in Android Studio and click **Run**.
 - **Interactive checkboxes** — tap to toggle `- [ ]` / `- [x]` directly from the widget
 - **Quick capture** — "Note" button appends to today's daily note
 - **Append with +** — one-tap add to whichever note the widget is currently showing
+- **Section-aware capture** — add tasks to the top or bottom of a selected heading or subheading
+- **Multiline capture** — add several tasks at once with one non-empty item per line
+- **Haptic actions** — receive subtle feedback for widget controls and task toggles
 - **TODO counter** — optional live count of unchecked tasks in the header
 - **Markdown rendering** — bold, italic, links, headings, and bullet lists
 - **Clickable links** — tap URLs and Markdown links to open in your browser
 - **Nested indentation** — sub-items display with matching indent levels
 - **Sort unchecked first** — push completed tasks to the bottom
 - **Accent color presets** — 8 color choices (terracotta, purple, blue, green, red, teal, pink, amber)
-- **Dark & light themes** — choose your preferred look
+- **System, dark & light themes** — follow Android automatically or choose a fixed look
 - **Widget transparency** — adjustable opacity to blend with your wallpaper
 - **Auto-refresh** — updates every 15 minutes and on screen unlock
 - **Deep link to Obsidian** — tap the title to open the note in Obsidian
@@ -66,12 +69,14 @@ All settings are per-widget. Tap the ⚙ icon on any widget to access:
 | Notes | Add/remove multiple pinned notes |
 | Daily Subfolder | e.g. `Daily Notes` |
 | Date Format | Any Java date pattern (`yyyy-MM-dd`, `dd-MM-yyyy`, etc.) |
-| Show Buttons | Toggle the + Add / Note button bar |
+| Show + Add Button | Toggle the + Add button independently |
+| Show Note Button | Toggle the Note button independently |
 | Sort Unchecked | Move incomplete tasks to the top |
+| Hide Properties | Hide leading YAML frontmatter from the widget |
 | Tap Checkbox Only | Require tapping the checkbox circle to toggle |
 | Show Add-to-Top | Show the add-to-top toggle on capture dialogs |
 | Show TODO Count | Display unchecked task count in the header |
-| Theme | Dark or Light |
+| Theme | Follow the system theme, or use Dark or Light |
 | Accent Color | Pick from 8 color presets |
 | Widget Opacity | 0–100% transparency slider |
 

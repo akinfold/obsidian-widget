@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.documentfile.provider.DocumentFile
 
 /**
  * Shared plumbing for widget configuration screens: widget-id/result handling,
@@ -89,7 +90,7 @@ abstract class BaseWidgetConfigActivity : AppCompatActivity() {
             Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         )
         vaultManager.vaultUri = uri
-        vaultManager.vaultName = uri.lastPathSegment?.substringAfterLast(':') ?: "Vault"
+        vaultManager.vaultName = DocumentFile.fromTreeUri(this, uri)?.name ?: "Vault"
         onVaultNameChanged(vaultManager.vaultName ?: "Vault")
     }
 

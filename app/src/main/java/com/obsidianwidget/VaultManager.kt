@@ -2,7 +2,9 @@ package com.obsidianwidget
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.res.Configuration
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -21,6 +23,12 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
 
     enum class CaptureResult { SUCCESS, ERROR, PLACEHOLDER_NOT_FOUND }
 
+    data class NoteHeading(
+        val lineIndex: Int,
+        val level: Int,
+        val title: String
+    )
+
     data class ChecklistItem(
         val lineIndex: Int,
         val text: String,
@@ -28,7 +36,9 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
         val isPlainText: Boolean = false,
         val isHeading: Boolean = false,
         val isBullet: Boolean = false,
-        val indentLevel: Int = 0
+        val isHorizontalRule: Boolean = false,
+        val indentLevel: Int = 0,
+        val propertyName: String? = null
     )
 
     companion object {
@@ -43,9 +53,13 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
         private const val KEY_PINNED_NOTE_URI = "pinned_note_uri"
         private const val KEY_PINNED_NOTE_NAME = "pinned_note_name"
         private const val KEY_SHOW_BUTTONS = "show_buttons"
+        private const val KEY_SHOW_ADD_BUTTON = "show_add_button"
+        private const val KEY_SHOW_NOTE_BUTTON = "show_note_button"
         private const val KEY_SORT_UNCHECKED = "sort_unchecked"
+        private const val KEY_HIDE_PROPERTIES = "hide_properties"
         private const val KEY_PINNED_NOTE_URIS = "pinned_note_uris"
         private const val KEY_PINNED_NOTE_NAMES = "pinned_note_names"
+        private const val KEY_PINNED_NOTE_PATHS = "pinned_note_paths"
         private const val KEY_CURRENT_NOTE_INDEX = "current_note_index"
         private const val KEY_WIDGET_ALPHA = "widget_alpha"
         private const val KEY_TAP_CHECKBOX_ONLY = "tap_checkbox_only"
@@ -62,8 +76,10 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
         private const val DEFAULT_CAPTURE_TIMESTAMP_FORMAT = "HH:mm"
 
         private val CHECKLIST_REGEX = Regex("""^(\s*)-\s*\[([ xX])\]\s*(.*)$""")
+        private val CAPTURE_TASK_PREFIX = Regex("""^(?:[-*+]\s*)?(?:\[[ xX]\]\s*)?""")
         private val HEADING_REGEX = Regex("""^(#{1,6})\s+(.+)$""")
         private val BULLET_REGEX = Regex("""^(\s*)[*+-]\s+(.+)$""")
+        private val PROPERTY_REGEX = Regex("""^([A-Za-z0-9_-]+):\s*(.*)$""")
 
         fun deleteWidgetPrefs(context: Context, widgetId: Int) {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -132,6 +148,17 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
         }
         set(value) { prefs.edit().putString(wk(KEY_PINNED_NOTE_NAMES), value.joinToString("|||")).commit() }
 
+    private var pinnedNotePathList: List<String>
+        get() = prefs.getString(wk(KEY_PINNED_NOTE_PATHS), null)
+            ?.split("|||")
+            ?.map(Uri::decode)
+            ?: emptyList()
+        set(value) {
+            prefs.edit()
+                .putString(wk(KEY_PINNED_NOTE_PATHS), value.joinToString("|||") { Uri.encode(it) })
+                .commit()
+        }
+
     var currentNoteIndex: Int
         get() = prefs.getInt(wk(KEY_CURRENT_NOTE_INDEX), 0)
         set(value) { prefs.edit().putInt(wk(KEY_CURRENT_NOTE_INDEX), value).commit() }
@@ -139,20 +166,27 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
     fun addPinnedNote(uri: Uri, name: String) {
         val uris = pinnedNoteUriList.toMutableList()
         val names = pinnedNoteNameList.toMutableList()
+        val paths = pinnedNotePathList.toMutableList()
+        while (paths.size < uris.size) paths.add("")
         uris.add(uri.toString())
         names.add(name)
+        paths.add(getVaultRelativePath(uri).orEmpty())
         pinnedNoteUriList = uris
         pinnedNoteNameList = names
+        pinnedNotePathList = paths
     }
 
     fun removePinnedNote(index: Int) {
         val uris = pinnedNoteUriList.toMutableList()
         val names = pinnedNoteNameList.toMutableList()
+        val paths = pinnedNotePathList.toMutableList()
         if (index in uris.indices) {
             uris.removeAt(index)
             names.removeAt(index)
+            if (index in paths.indices) paths.removeAt(index)
             pinnedNoteUriList = uris
             pinnedNoteNameList = names
+            pinnedNotePathList = paths
             if (currentNoteIndex >= uris.size) {
                 currentNoteIndex = (uris.size - 1).coerceAtLeast(0)
             }
@@ -174,7 +208,22 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
         val uris = pinnedNoteUriList
         if (uris.isEmpty()) return null
         val idx = currentNoteIndex.coerceIn(0, uris.lastIndex)
-        return Uri.parse(uris[idx])
+        val storedUri = Uri.parse(uris[idx])
+        val relativePath = pinnedNotePathList.getOrNull(idx)?.takeIf { it.isNotBlank() }
+            ?: getVaultRelativePath(storedUri)
+        val resolvedUri = relativePath?.let(::findNoteByRelativePath)?.uri ?: return storedUri
+
+        if (resolvedUri != storedUri) {
+            val updatedUris = uris.toMutableList().apply { this[idx] = resolvedUri.toString() }
+            pinnedNoteUriList = updatedUris
+        }
+        if (relativePath != pinnedNotePathList.getOrNull(idx)) {
+            val updatedPaths = pinnedNotePathList.toMutableList()
+            while (updatedPaths.size <= idx) updatedPaths.add("")
+            updatedPaths[idx] = relativePath
+            pinnedNotePathList = updatedPaths
+        }
+        return resolvedUri
     }
 
     fun getCurrentPinnedNoteName(): String? {
@@ -184,13 +233,27 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
         return names[idx]
     }
 
-    var showButtons: Boolean
-        get() = prefs.getBoolean(wk(KEY_SHOW_BUTTONS), prefs.getBoolean(KEY_SHOW_BUTTONS, true))
-        set(value) = prefs.edit().putBoolean(wk(KEY_SHOW_BUTTONS), value).apply()
+    var showAddButton: Boolean
+        get() = prefs.getBoolean(
+            wk(KEY_SHOW_ADD_BUTTON),
+            prefs.getBoolean(wk(KEY_SHOW_BUTTONS), prefs.getBoolean(KEY_SHOW_BUTTONS, true))
+        )
+        set(value) = prefs.edit().putBoolean(wk(KEY_SHOW_ADD_BUTTON), value).apply()
+
+    var showNoteButton: Boolean
+        get() = prefs.getBoolean(
+            wk(KEY_SHOW_NOTE_BUTTON),
+            prefs.getBoolean(wk(KEY_SHOW_BUTTONS), prefs.getBoolean(KEY_SHOW_BUTTONS, true))
+        )
+        set(value) = prefs.edit().putBoolean(wk(KEY_SHOW_NOTE_BUTTON), value).apply()
 
     var sortUnchecked: Boolean
         get() = prefs.getBoolean(wk(KEY_SORT_UNCHECKED), prefs.getBoolean(KEY_SORT_UNCHECKED, false))
         set(value) = prefs.edit().putBoolean(wk(KEY_SORT_UNCHECKED), value).apply()
+
+    var hideProperties: Boolean
+        get() = prefs.getBoolean(wk(KEY_HIDE_PROPERTIES), false)
+        set(value) = prefs.edit().putBoolean(wk(KEY_HIDE_PROPERTIES), value).apply()
 
     var widgetAlpha: Int
         get() = prefs.getInt(wk(KEY_WIDGET_ALPHA), 100)
@@ -209,7 +272,7 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
         set(value) = prefs.edit().putBoolean(wk(KEY_SHOW_ADD_TO_TOP), value).apply()
 
     var widgetTheme: String
-        get() = prefs.getString(wk(KEY_WIDGET_THEME), "dark") ?: "dark"
+        get() = prefs.getString(wk(KEY_WIDGET_THEME), "system") ?: "system"
         set(value) = prefs.edit().putString(wk(KEY_WIDGET_THEME), value).apply()
 
     var accentColor: String
@@ -247,11 +310,11 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
         set(value) = prefs.edit().putString(wk(KEY_CAPTURE_PLACEHOLDER), value).apply()
 
     fun getThemeColors(): ThemeColors {
-        val isDark = widgetTheme == "dark"
+        val isDark = isDarkTheme()
         val accent = try { android.graphics.Color.parseColor(accentColor) } catch (_: Exception) { 0xFFD97757.toInt() }
         return if (isDark) {
             ThemeColors(
-                bg = 0xF21A1A1E.toInt(),
+                bg = 0xFF1A1A1E.toInt(),
                 text = 0xFFE8E6E3.toInt(),
                 textSecondary = 0xFF8B8B8F.toInt(),
                 accent = accent,
@@ -259,13 +322,20 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
             )
         } else {
             ThemeColors(
-                bg = 0xF2F5F5F5.toInt(),
+                bg = 0xFFF5F5F5.toInt(),
                 text = 0xFF1A1A1E.toInt(),
                 textSecondary = 0xFF6B6B6F.toInt(),
                 accent = accent,
                 buttonText = 0xFFFFFFFF.toInt()
             )
         }
+    }
+
+    fun isDarkTheme(): Boolean = when (widgetTheme) {
+        "dark" -> true
+        "light" -> false
+        else -> context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+            Configuration.UI_MODE_NIGHT_YES
     }
 
     data class ThemeColors(
@@ -288,8 +358,10 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
         dailyFolder: String,
         dateFormat: String,
         noteMode: NoteMode,
-        showButtons: Boolean,
+        showAddButton: Boolean,
+        showNoteButton: Boolean,
         sortUnchecked: Boolean,
+        hideProperties: Boolean,
         widgetAlpha: Int,
         tapCheckboxOnly: Boolean,
         addToTop: Boolean,
@@ -302,8 +374,10 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
             .putString(wk(KEY_DAILY_FOLDER), dailyFolder)
             .putString(wk(KEY_DATE_FORMAT), dateFormat)
             .putString(wk(KEY_NOTE_MODE), noteMode.name)
-            .putBoolean(wk(KEY_SHOW_BUTTONS), showButtons)
+            .putBoolean(wk(KEY_SHOW_ADD_BUTTON), showAddButton)
+            .putBoolean(wk(KEY_SHOW_NOTE_BUTTON), showNoteButton)
             .putBoolean(wk(KEY_SORT_UNCHECKED), sortUnchecked)
+            .putBoolean(wk(KEY_HIDE_PROPERTIES), hideProperties)
             .putInt(wk(KEY_WIDGET_ALPHA), widgetAlpha)
             .putBoolean(wk(KEY_TAP_CHECKBOX_ONLY), tapCheckboxOnly)
             .putBoolean(wk(KEY_ADD_TO_TOP), addToTop)
@@ -355,6 +429,21 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
         }
     }
 
+    fun readWidgetNoteForDisplay(): String? {
+        val content = readWidgetNote() ?: return null
+        if (!hideProperties) return content
+
+        val lines = content.lines()
+        val frontmatterEnd = findFrontmatterEnd(lines) ?: return content
+        return lines.drop(frontmatterEnd + 1).joinToString("\n").trimStart('\n', '\r')
+    }
+
+    private fun findFrontmatterEnd(lines: List<String>): Int? {
+        if (lines.firstOrNull()?.trim() != "---") return null
+        val closingOffset = lines.drop(1).indexOfFirst { it.trim() == "---" }
+        return if (closingOffset >= 0) closingOffset + 1 else null
+    }
+
     /**
      * Get the display title for the widget.
      */
@@ -393,12 +482,77 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
     /**
      * Append text to today's daily note (creates the file if it doesn't exist).
      */
-    fun appendToWidgetNote(text: String): Boolean {
-        val formatted = if (parseChecklist().any { !it.isPlainText }) "- [ ] $text" else text
+    fun appendToWidgetNote(text: String, headingLineIndex: Int? = null): Boolean {
+        val inputLines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        if (inputLines.isEmpty()) return false
+
+        val formatted = if (parseChecklist().any { !it.isPlainText }) {
+            inputLines.mapNotNull { line ->
+                CAPTURE_TASK_PREFIX.replace(line, "").trim()
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { "- [ ] $it" }
+            }.joinToString("\n")
+        } else {
+            inputLines.joinToString("\n")
+        }
+        if (formatted.isEmpty()) return false
+
+        if (headingLineIndex != null) {
+            return appendToHeading(formatted, headingLineIndex)
+        }
         return when (noteMode) {
             NoteMode.DAILY -> appendToDailyNote(formatted)
             NoteMode.PINNED -> appendToPinnedNote(formatted)
         }
+    }
+
+    fun getNoteHeadings(): List<NoteHeading> {
+        val content = readWidgetNote() ?: return emptyList()
+        val lines = content.lines()
+        val frontmatterEnd = findFrontmatterEnd(lines)
+        return lines.mapIndexedNotNull { index, line ->
+            if (frontmatterEnd != null && index <= frontmatterEnd) return@mapIndexedNotNull null
+            val match = HEADING_REGEX.matchEntire(line) ?: return@mapIndexedNotNull null
+            NoteHeading(
+                lineIndex = index,
+                level = match.groupValues[1].length,
+                title = match.groupValues[2].trim()
+            )
+        }
+    }
+
+    private fun appendToHeading(text: String, headingLineIndex: Int): Boolean {
+        val noteUri = getWidgetNoteUri() ?: return false
+        val content = readFileContent(noteUri) ?: return false
+        val lines = content.lines().toMutableList()
+        val heading = lines.getOrNull(headingLineIndex)?.let(HEADING_REGEX::matchEntire)
+            ?: return false
+        val headingLevel = heading.groupValues[1].length
+
+        var insertionIndex = headingLineIndex + 1
+        if (!addToTop) {
+            insertionIndex = lines.indexOfFirstFrom(headingLineIndex + 1) { line ->
+                val nextHeading = HEADING_REGEX.matchEntire(line)
+                nextHeading != null && nextHeading.groupValues[1].length <= headingLevel
+            }.let { if (it >= 0) it else lines.size }
+
+            while (insertionIndex > headingLineIndex + 1 && lines[insertionIndex - 1].isBlank()) {
+                insertionIndex--
+            }
+        }
+
+        lines.add(insertionIndex, text)
+        return writeFileContent(noteUri, lines.joinToString("\n"))
+    }
+
+    private inline fun List<String>.indexOfFirstFrom(
+        startIndex: Int,
+        predicate: (String) -> Boolean
+    ): Int {
+        for (index in startIndex until size) {
+            if (predicate(this[index])) return index
+        }
+        return -1
     }
 
     fun appendToPinnedNote(text: String): Boolean {
@@ -544,6 +698,31 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
         return current
     }
 
+    private fun getVaultRelativePath(noteUri: Uri): String? {
+        val rootUri = vaultUri ?: return null
+        return try {
+            val treeId = DocumentsContract.getTreeDocumentId(rootUri)
+            val documentId = DocumentsContract.getDocumentId(noteUri)
+            if (documentId.startsWith("$treeId/")) {
+                documentId.removePrefix("$treeId/")
+            } else {
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun findNoteByRelativePath(path: String): DocumentFile? {
+        val rootUri = vaultUri ?: return null
+        var current = DocumentFile.fromTreeUri(context, rootUri) ?: return null
+        for (segment in path.split("/")) {
+            if (segment.isBlank()) continue
+            current = current.findFile(segment) ?: return null
+        }
+        return current.takeIf { it.isFile }
+    }
+
     private fun findOrCreateSubDirectory(root: DocumentFile, path: String): DocumentFile? {
         var current = root
         for (segment in path.split("/")) {
@@ -586,8 +765,14 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
      */
     fun parseChecklist(): List<ChecklistItem> {
         val content = readWidgetNote() ?: return emptyList()
+        val lines = content.lines()
+        val frontmatterEnd = findFrontmatterEnd(lines)
         val items = mutableListOf<ChecklistItem>()
-        content.lines().forEachIndexed { index, line ->
+        if (frontmatterEnd != null && !hideProperties) {
+            items.addAll(parseFrontmatterProperties(lines, frontmatterEnd))
+        }
+        lines.forEachIndexed { index, line ->
+            if (frontmatterEnd != null && index <= frontmatterEnd) return@forEachIndexed
             val match = CHECKLIST_REGEX.matchEntire(line)
             val headingMatch = HEADING_REGEX.matchEntire(line)
             if (match != null) {
@@ -596,6 +781,8 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
                 val checked = match.groupValues[2].lowercase() == "x"
                 val text = match.groupValues[3].trim()
                 items.add(ChecklistItem(lineIndex = index, text = text, isChecked = checked, indentLevel = indentLevel))
+            } else if (line.trim() == "---") {
+                items.add(ChecklistItem(lineIndex = index, text = "", isChecked = false, isPlainText = true, isHorizontalRule = true))
             } else if (headingMatch != null) {
                 val text = headingMatch.groupValues[2].trim()
                 items.add(ChecklistItem(lineIndex = index, text = text, isChecked = false, isPlainText = true, isHeading = true))
@@ -618,6 +805,52 @@ class VaultManager(private val context: Context, private val widgetId: Int = -1)
             return nonChecklist + unchecked + checked
         }
         return items
+    }
+
+    private fun parseFrontmatterProperties(
+        lines: List<String>,
+        frontmatterEnd: Int
+    ): List<ChecklistItem> {
+        val properties = mutableListOf<ChecklistItem>()
+        var propertyName: String? = null
+        var propertyLineIndex = -1
+        val values = mutableListOf<String>()
+
+        fun addProperty() {
+            val name = propertyName ?: return
+            properties.add(
+                ChecklistItem(
+                    lineIndex = propertyLineIndex,
+                    text = values.joinToString(", "),
+                    isChecked = false,
+                    isPlainText = true,
+                    propertyName = name
+                )
+            )
+        }
+
+        lines.subList(1, frontmatterEnd).forEachIndexed { offset, line ->
+            val match = PROPERTY_REGEX.matchEntire(line)
+            if (match != null) {
+                addProperty()
+                propertyName = match.groupValues[1]
+                propertyLineIndex = offset + 1
+                values.clear()
+                cleanPropertyValue(match.groupValues[2]).takeIf { it.isNotEmpty() }?.let(values::add)
+            } else if (propertyName != null) {
+                cleanPropertyValue(line).takeIf { it.isNotEmpty() }?.let(values::add)
+            }
+        }
+        addProperty()
+        return properties
+    }
+
+    private fun cleanPropertyValue(value: String): String {
+        var cleaned = value.trim().removePrefix("-").trim()
+        if (cleaned.startsWith("[") && cleaned.endsWith("]")) {
+            cleaned = cleaned.substring(1, cleaned.length - 1).trim()
+        }
+        return cleaned.removeSurrounding("\"").removeSurrounding("'")
     }
 
     /**

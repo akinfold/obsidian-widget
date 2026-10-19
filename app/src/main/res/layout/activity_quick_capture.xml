@@ -20,16 +20,48 @@
     <EditText
         android:id="@+id/capture_input"
         android:layout_width="match_parent"
-        android:layout_height="120dp"
-        android:background="@drawable/input_background"
+        android:layout_height="wrap_content"
+        android:minHeight="112dp"
+        android:maxHeight="200dp"
+        android:minLines="4"
+        android:maxLines="8"
+        android:background="@drawable/capture_input_background"
         android:gravity="top|start"
         android:hint="@string/capture_hint"
         android:inputType="textMultiLine"
-        android:padding="14dp"
+        android:padding="16dp"
         android:textColor="@color/obsidian_text"
         android:textColorHint="@color/obsidian_text_secondary"
         android:textSize="14sp"
         android:layout_marginBottom="12dp" />
+
+    <LinearLayout
+        android:id="@+id/capture_section_row"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="4dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:text="Section"
+            android:textColor="@color/obsidian_text"
+            android:textSize="14sp" />
+
+        <Spinner
+            android:id="@+id/capture_section"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:background="@android:color/transparent"
+            android:popupBackground="@drawable/capture_dropdown_popup"
+            android:spinnerMode="dropdown" />
+
+    </LinearLayout>
 
     <!-- Add to Top Toggle -->
     <LinearLayout
@@ -66,30 +98,34 @@
         <Button
             android:id="@+id/btn_cancel"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
+            android:layout_height="44dp"
             android:minHeight="0dp"
+            android:minWidth="88dp"
             android:background="@drawable/button_outline"
+            android:backgroundTint="@null"
             android:text="@string/cancel"
             android:textColor="@color/obsidian_text_secondary"
-            android:textSize="12sp"
+            android:textSize="14sp"
             android:textAllCaps="false"
             android:fontFamily="sans-serif-medium"
-            android:paddingStart="14dp"
-            android:paddingEnd="14dp"
-            android:layout_marginEnd="8dp" />
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp"
+            android:layout_marginEnd="10dp" />
 
         <Button
             android:id="@+id/btn_save"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
+            android:layout_height="44dp"
             android:minHeight="0dp"
+            android:minWidth="96dp"
             android:background="@drawable/button_background"
+            android:backgroundTint="@null"
             android:text="@string/save"
             android:textColor="@color/white"
-            android:textSize="12sp"
+            android:textSize="14sp"
             android:textAllCaps="false"
             android:fontFamily="sans-serif-medium"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp" />
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp" />
     </LinearLayout>
 </LinearLayout>

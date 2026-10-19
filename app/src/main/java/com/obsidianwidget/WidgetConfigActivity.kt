@@ -24,8 +24,10 @@ class WidgetConfigActivity : BaseWidgetConfigActivity() {
     private lateinit var noteListContainer: LinearLayout
     private lateinit var transparencySeekBar: SeekBar
     private lateinit var transparencyLabel: TextView
-    private lateinit var showButtonsToggle: Switch
+    private lateinit var showAddButtonToggle: Switch
+    private lateinit var showNoteButtonToggle: Switch
     private lateinit var sortUncheckedToggle: Switch
+    private lateinit var hidePropertiesToggle: Switch
     private lateinit var tapCheckboxOnlyToggle: Switch
     private lateinit var showAddToTopToggle: Switch
     private lateinit var showTodoCountToggle: Switch
@@ -58,8 +60,10 @@ class WidgetConfigActivity : BaseWidgetConfigActivity() {
         noteListContainer = findViewById(R.id.config_note_list_container)
         transparencySeekBar = findViewById(R.id.config_transparency)
         transparencyLabel = findViewById(R.id.config_transparency_label)
-        showButtonsToggle = findViewById(R.id.config_show_buttons)
+        showAddButtonToggle = findViewById(R.id.config_show_add_button)
+        showNoteButtonToggle = findViewById(R.id.config_show_note_button)
         sortUncheckedToggle = findViewById(R.id.config_sort_unchecked)
+        hidePropertiesToggle = findViewById(R.id.config_hide_properties)
         tapCheckboxOnlyToggle = findViewById(R.id.config_tap_checkbox_only)
         showAddToTopToggle = findViewById(R.id.config_show_add_to_top)
         showTodoCountToggle = findViewById(R.id.config_show_todo_count)
@@ -113,8 +117,10 @@ class WidgetConfigActivity : BaseWidgetConfigActivity() {
         updateModeSections(isPinned)
 
         refreshNoteList()
-        showButtonsToggle.isChecked = vaultManager.showButtons
+        showAddButtonToggle.isChecked = vaultManager.showAddButton
+        showNoteButtonToggle.isChecked = vaultManager.showNoteButton
         sortUncheckedToggle.isChecked = vaultManager.sortUnchecked
+        hidePropertiesToggle.isChecked = vaultManager.hideProperties
         tapCheckboxOnlyToggle.isChecked = vaultManager.tapCheckboxOnly
         showAddToTopToggle.isChecked = vaultManager.showAddToTop
         showTodoCountToggle.isChecked = vaultManager.showTodoCount
@@ -124,7 +130,13 @@ class WidgetConfigActivity : BaseWidgetConfigActivity() {
         transparencyLabel.text = "${vaultManager.widgetAlpha}%"
 
         // Theme
-        themeGroup.check(if (vaultManager.widgetTheme == "light") R.id.config_theme_light else R.id.config_theme_dark)
+        themeGroup.check(
+            when (vaultManager.widgetTheme) {
+                "dark" -> R.id.config_theme_dark
+                "light" -> R.id.config_theme_light
+                else -> R.id.config_theme_system
+            }
+        )
 
         // Accent color
         selectedAccentColor = vaultManager.accentColor
@@ -193,13 +205,19 @@ class WidgetConfigActivity : BaseWidgetConfigActivity() {
             dateFormat = dateFormatInput.text.toString().trim().ifBlank { "yyyy-MM-dd" },
             noteMode = if (noteModeGroup.checkedRadioButtonId == R.id.config_radio_pinned)
                 VaultManager.NoteMode.PINNED else VaultManager.NoteMode.DAILY,
-            showButtons = showButtonsToggle.isChecked,
+            showAddButton = showAddButtonToggle.isChecked,
+            showNoteButton = showNoteButtonToggle.isChecked,
             sortUnchecked = sortUncheckedToggle.isChecked,
+            hideProperties = hidePropertiesToggle.isChecked,
             widgetAlpha = transparencySeekBar.progress,
             tapCheckboxOnly = tapCheckboxOnlyToggle.isChecked,
             addToTop = vaultManager.addToTop,
             showAddToTop = showAddToTopToggle.isChecked,
-            widgetTheme = if (themeGroup.checkedRadioButtonId == R.id.config_theme_light) "light" else "dark",
+            widgetTheme = when (themeGroup.checkedRadioButtonId) {
+                R.id.config_theme_dark -> "dark"
+                R.id.config_theme_light -> "light"
+                else -> "system"
+            },
             accentColor = selectedAccentColor,
             showTodoCount = showTodoCountToggle.isChecked
         )

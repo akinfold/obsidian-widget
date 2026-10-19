@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.res.Configuration
 import android.os.Build
 
 class ObsidianWidgetApp : Application() {
@@ -25,5 +26,10 @@ class ObsidianWidgetApp : Application() {
         } else {
             registerReceiver(screenUnlockReceiver, filter)
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        ObsidianWidgetProvider.updateAllWidgets(this)
     }
 }

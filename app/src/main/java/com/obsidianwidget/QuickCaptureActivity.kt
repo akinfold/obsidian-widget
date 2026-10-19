@@ -2,8 +2,11 @@ package com.obsidianwidget
 
 import android.os.Bundle
 import android.view.View
+import android.view.WindowManager
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.Spinner
 import android.widget.Switch
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -29,6 +32,23 @@ class QuickCaptureActivity : AppCompatActivity() {
         val captureTitle = findViewById<android.widget.TextView>(R.id.capture_title)
         val addToTopToggle = findViewById<Switch>(R.id.capture_add_to_top)
         val addToTopRow = findViewById<View>(R.id.capture_add_to_top_row)
+        val sectionRow = findViewById<View>(R.id.capture_section_row)
+        val sectionSpinner = findViewById<Spinner>(R.id.capture_section)
+        val headings = if (appendToWidget) widgetVaultManager.getNoteHeadings() else emptyList()
+
+        if (headings.isNotEmpty()) {
+            sectionRow.visibility = View.VISIBLE
+            val sectionNames = listOf("Whole note") + headings.map { heading ->
+                "  ".repeat((heading.level - 1).coerceAtMost(3)) + heading.title
+            }
+            sectionSpinner.adapter = ArrayAdapter(
+                this,
+                R.layout.capture_section_item,
+                sectionNames
+            ).apply {
+                setDropDownViewResource(R.layout.capture_section_dropdown_item)
+            }
+        }
 
         // Show/hide add-to-top toggle based on widget config (not for quick-capture widget)
         if (!isQuickCaptureWidget && widgetVaultManager.showAddToTop) {
@@ -42,12 +62,13 @@ class QuickCaptureActivity : AppCompatActivity() {
         } else if (appendToWidget) {
             val noteName = widgetVaultManager.getWidgetTitle()
             captureTitle.text = "Add to $noteName"
-            captureInput.hint = "Type something to add..."
-            captureInput.inputType = android.text.InputType.TYPE_CLASS_TEXT
-            captureInput.layoutParams.height = resources.getDimensionPixelSize(
-                android.R.dimen.app_icon_size) // ~48dp, compact
+            captureInput.hint = "One item per line..."
+            captureInput.inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or
+                android.text.InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
             captureInput.setSingleLine(false)
-            captureInput.maxLines = 3
+            captureInput.maxLines = 8
         } else {
             captureTitle.text = "Quick Note"
             captureInput.hint = "Capture a thought..."
@@ -75,13 +96,16 @@ class QuickCaptureActivity : AppCompatActivity() {
             // double-insert while the write is in flight.
             saveButton.isEnabled = false
             val addToTop = addToTopToggle.isChecked
+            val headingLineIndex = headings
+                .getOrNull(sectionSpinner.selectedItemPosition - 1)
+                ?.lineIndex
             Thread {
                 val result = if (isQuickCaptureWidget) {
                     widgetVaultManager.captureToDailyNote(text)
                 } else {
                     widgetVaultManager.addToTop = addToTop
                     val appended = if (appendToWidget) {
-                        widgetVaultManager.appendToWidgetNote(text)
+                        widgetVaultManager.appendToWidgetNote(text, headingLineIndex)
                     } else {
                         widgetVaultManager.appendToDailyNote(text)
                     }
@@ -112,5 +136,9 @@ class QuickCaptureActivity : AppCompatActivity() {
                 captureInput.setText(it)
             }
         }
+
+        captureInput.requestFocus()
+        captureInput.setSelection(captureInput.text.length)
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
     }
 }
